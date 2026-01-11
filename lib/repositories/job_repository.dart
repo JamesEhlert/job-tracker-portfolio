@@ -1,15 +1,18 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/job_application.dart';
 
-/// Repositório responsável pelas operações de banco de dados (CRUD) das vagas.
 class JobRepository {
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
 
-  JobRepository({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  JobRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance;
 
-  /// Cria uma referência para a coleção de vagas do usuário específico.
-  /// Caminho no banco: users -> {userId} -> job_applications
+  // --- Funções de Banco de Dados (Firestore) ---
+
   CollectionReference _getCollection(String userId) {
     return _firestore
         .collection('users')
@@ -17,47 +20,24 @@ class JobRepository {
         .collection('job_applications');
   }
 
-  /// ADICIONAR: Salva uma nova vaga no banco de dados.
-  Future<void> addJob({
-    required String userId,
-    required JobApplication job,
-  }) async {
+  Future<void> addJob({required String userId, required JobApplication job}) async {
     await _getCollection(userId).add(job.toMap());
   }
 
-  /// ATUALIZAR: Modifica uma vaga existente.
-  Future<void> updateJob({
-    required String userId,
-    required JobApplication job,
-  }) async {
-    // O ID é obrigatório para saber qual documento atualizar
+  Future<void> updateJob({required String userId, required JobApplication job}) async {
     if (job.id == null) return;
-
     await _getCollection(userId).doc(job.id).update(job.toMap());
   }
 
-  /// DELETAR: Remove uma vaga do banco de dados.
-  Future<void> deleteJob({
-    required String userId,
-    required String jobId,
-  }) async {
+  Future<void> deleteJob({required String userId, required String jobId}) async {
     await _getCollection(userId).doc(jobId).delete();
   }
 
-  /// LER (Stream): Busca a lista de vagas em tempo real.
-  /// Se o status for informado (ex: 'to_apply'), filtra a lista.
-  /// Se status for null, traz tudo.
-  Stream<List<JobApplication>> getJobsStream({
-    required String userId,
-    String? status,
-  }) {
+  Stream<List<JobApplication>> getJobsStream({required String userId, String? status}) {
     Query query = _getCollection(userId).orderBy('createdAt', descending: true);
-
     if (status != null) {
       query = query.where('status', isEqualTo: status);
     }
-
-    // Transforma os dados brutos do Firebase (Snapshots) em nossa lista de objetos JobApplication
     return query.snapshots().map((snapshot) {
       return snapshot.docs.map((doc) {
         return JobApplication.fromMap(
@@ -66,5 +46,26 @@ class JobRepository {
         );
       }).toList();
     });
+  }
+
+  // --- NOVA FUNÇÃO: Upload de Imagem (Storage) ---
+  
+  Future<String> uploadImage({required String userId, required File imageFile}) async {
+    // 1. Cria um nome único para o arquivo (usando a data atual em milissegundos)
+    final String fileName = DateTime.now().millisecondsSinceEpoch.toString();
+    
+    // 2. Define o caminho onde será salvo: users/{id}/uploads/{nome}.jpg
+    final Reference ref = _storage.ref().child('users/$userId/uploads/$fileName.jpg');
+    
+    // 3. Envia o arquivo
+    final UploadTask uploadTask = ref.putFile(imageFile);
+    
+    // 4. Aguarda o envio terminar e pega o Snapshot (resultado)
+    final TaskSnapshot snapshot = await uploadTask;
+    
+    // 5. Pede ao Storage o link público para download dessa foto
+    final String downloadUrl = await snapshot.ref.getDownloadURL();
+    
+    return downloadUrl; // Retorna o link (ex: https://firebasestorage...)
   }
 }

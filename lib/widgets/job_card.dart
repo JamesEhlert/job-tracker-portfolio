@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../models/job_application.dart';
 import '../repositories/job_repository.dart';
 import '../repositories/auth_repository.dart';
-import '../screens/job_detail_screen.dart'; // Importante: Importa a tela de detalhes
+import '../screens/job_detail_screen.dart';
+import '../screens/add_job_screen.dart';
 
 class JobCard extends StatelessWidget {
   final JobApplication job;
@@ -12,92 +14,178 @@ class JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Define as cores baseadas no status da vaga
     final isToApply = job.status == 'to_apply';
-    final cardColor = isToApply ? Colors.white : Colors.green.shade50;
+    
+    // Cores Pastéis (Opacas) para os Badges
+    Color badgeBg;
+    Color badgeText;
+    
+    if (job.workModel == 'Remote') {
+      badgeBg = const Color(0xFFF3E8FF); // Roxo muito claro
+      badgeText = const Color(0xFF7E22CE); // Roxo médio
+    } else if (job.workModel == 'Hybrid') {
+      badgeBg = const Color(0xFFFFF7ED); // Laranja muito claro
+      badgeText = const Color(0xFFC2410C); // Laranja médio
+    } else {
+      badgeBg = const Color(0xFFEFF6FF); // Azul muito claro
+      badgeText = const Color(0xFF1D4ED8); // Azul médio
+    }
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: cardColor,
-      // Garante que a animação de clique respeite as bordas arredondadas do Card
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // Ação de clique: Navega para a tela de Detalhes
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => JobDetailScreen(job: job),
-            ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => JobDetailScreen(job: job)),
+            );
+          },
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Cabeçalho: Empresa e Seta indicando que é clicável
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // --- IMAGEM E HEADER ---
+              Stack(
                 children: [
-                  Expanded(
-                    child: Text(
-                      job.companyName.toUpperCase(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  SizedBox(
+                    height: 120,
+                    width: double.infinity,
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: job.imageUrls.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: job.imageUrls.first,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              color: Colors.grey.shade100,
+                              child: Center(
+                                child: Icon(Icons.apartment, size: 40, color: Colors.grey.shade300),
+                              ),
+                            ),
                     ),
                   ),
-                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+
+                  // Badge de Modelo (CORRIGIDO: Agora usa as cores variáveis)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: badgeBg.withValues(alpha: 0.95), // Usa a cor calculada
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: badgeBg),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.work_outline, size: 12, color: badgeText),
+                          const SizedBox(width: 4),
+                          Text(
+                            job.workModel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: badgeText, // Usa a cor calculada
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Menu 3 Pontos
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: PopupMenuButton<String>(
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.more_horiz, size: 16, color: Colors.white),
+                      ),
+                      onSelected: (value) => _handleMenuAction(context, value),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                        const PopupMenuItem(value: 'delete', child: Text('Excluir', style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 4),
 
-              // Título: Cargo
-              Text(
-                job.role,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 4),
-
-              // Badge: Modelo de trabalho (Remoto, Híbrido, etc)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  job.workModel,
-                  style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Botão de Ação: "Marcar como Enviado"
-              // Só aparece se a vaga ainda estiver no planejamento ("to_apply")
-              if (isToApply)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _markAsApplied(context),
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('MARCAR COMO ENVIADO'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
+              // --- CONTEÚDO ---
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      job.role,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      job.companyName,
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                    ),
+                    
+                    const SizedBox(height: 16),
+
+                    if (isToApply) ...{
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () => _markAsApplied(context),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            foregroundColor: const Color(0xFF334155),
+                          ),
+                          child: const Text('Marcar como Enviado', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        ),
+                      )
+                    } else ...{
+                       Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Candidatura Enviada',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500),
+                          ),
+                        ),
+                      ),
+                    }
+                  ],
                 ),
+              ),
             ],
           ),
         ),
@@ -105,12 +193,39 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  // Função lógica: Move a vaga da aba "Planejamento" para "Histórico"
+  void _handleMenuAction(BuildContext context, String value) {
+    if (value == 'edit') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => AddJobScreen(jobToEdit: job)));
+    } else if (value == 'delete') {
+      _confirmDelete(context);
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir?'),
+        content: const Text('Deseja realmente apagar esta vaga?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      final userId = context.read<AuthRepository>().currentUser?.uid;
+      if (userId != null && job.id != null) {
+        await context.read<JobRepository>().deleteJob(userId: userId, jobId: job.id!);
+      }
+    }
+  }
+
   Future<void> _markAsApplied(BuildContext context) async {
     final userId = context.read<AuthRepository>().currentUser?.uid;
     if (userId == null) return;
-
-    // Cria uma cópia da vaga alterando o status para 'applied' e atualizando a data
+    
     final updatedJob = JobApplication(
       id: job.id,
       companyName: job.companyName,
@@ -121,19 +236,14 @@ class JobCard extends StatelessWidget {
       linkUrl: job.linkUrl,
       imageUrls: job.imageUrls,
       createdAt: job.createdAt,
-      status: 'applied', // Mudança de status
+      status: 'applied',
       updatedAt: DateTime.now(),
     );
 
-    // Salva a alteração no Firebase
-    await context.read<JobRepository>().updateJob(
-          userId: userId,
-          job: updatedJob,
-        );
-
-    // Mostra feedback visual
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Parabéns! Vaga movida para o Histórico.')),
-    );
+    await context.read<JobRepository>().updateJob(userId: userId, job: updatedJob);
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaga movida para o Histórico.')));
+    }
   }
 }

@@ -1,34 +1,59 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/job_application.dart';
 import '../repositories/job_repository.dart';
 import '../repositories/auth_repository.dart';
 
 class AddJobScreen extends StatefulWidget {
-  const AddJobScreen({super.key});
+  final JobApplication? jobToEdit;
+
+  const AddJobScreen({super.key, this.jobToEdit});
 
   @override
   State<AddJobScreen> createState() => _AddJobScreenState();
 }
 
 class _AddJobScreenState extends State<AddJobScreen> {
-  final _formKey = GlobalKey<FormState>(); // Chave para validar o formulário
+  final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Controladores dos campos de texto
-  final _companyController = TextEditingController();
-  final _roleController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _linkController = TextEditingController();
-  final _salaryController = TextEditingController();
+  late TextEditingController _companyController;
+  late TextEditingController _roleController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _linkController;
+  late TextEditingController _salaryController;
 
-  // Valores padrão para os Dropdowns
-  String _status = 'to_apply'; // Começa como "A Candidatar"
-  String _workModel = 'Remote'; // Começa como "Remoto"
+  String _status = 'to_apply';
+  String _workModel = 'Remote';
+
+  // Correção: Adicionado 'final' conforme pedido pelo log
+  final List<String> _existingImageUrls = []; 
+  final List<File> _newImages = []; 
+
+  @override
+  void initState() {
+    super.initState();
+    final job = widget.jobToEdit;
+    
+    _companyController = TextEditingController(text: job?.companyName ?? '');
+    _roleController = TextEditingController(text: job?.role ?? '');
+    _descriptionController = TextEditingController(text: job?.description ?? '');
+    _linkController = TextEditingController(text: job?.linkUrl ?? '');
+    _salaryController = TextEditingController(
+      text: job?.salaryExpectation?.toString().replaceAll('.', ',') ?? '',
+    );
+
+    if (job != null) {
+      _status = job.status;
+      _workModel = job.workModel;
+      _existingImageUrls.addAll(job.imageUrls);
+    }
+  }
 
   @override
   void dispose() {
-    // Limpa a memória dos controladores quando sair da tela
     _companyController.dispose();
     _roleController.dispose();
     _descriptionController.dispose();
@@ -37,48 +62,62 @@ class _AddJobScreenState extends State<AddJobScreen> {
     super.dispose();
   }
 
-  // Função para Salvar a Vaga
+  Future<void> _pickImages() async {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile> images = await picker.pickMultiImage();
+    
+    if (images.isNotEmpty) {
+      setState(() {
+        _newImages.addAll(images.map((x) => File(x.path)));
+      });
+    }
+  }
+
   Future<void> _saveJob() async {
-    // 1. Verifica se o formulário está válido (campos obrigatórios preenchidos)
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // 2. Pega o ID do usuário logado (obrigatório para salvar na pasta certa)
       final userId = context.read<AuthRepository>().currentUser?.uid;
       if (userId == null) throw Exception('Usuário não identificado');
+      final jobRepo = context.read<JobRepository>();
 
-      // 3. Cria o objeto da Vaga com os dados digitados
-      final job = JobApplication(
+      List<String> finalImageUrls = [..._existingImageUrls];
+      
+      for (var imageFile in _newImages) {
+        final String url = await jobRepo.uploadImage(
+          userId: userId,
+          imageFile: imageFile,
+        );
+        finalImageUrls.add(url);
+      }
+
+      final jobData = JobApplication(
+        id: widget.jobToEdit?.id,
         companyName: _companyController.text.trim(),
         role: _roleController.text.trim(),
         description: _descriptionController.text.trim(),
         linkUrl: _linkController.text.trim(),
         workModel: _workModel,
         status: _status,
-        // Converte o texto do salário para número (se tiver texto)
         salaryExpectation: double.tryParse(_salaryController.text.replaceAll(',', '.')),
-        imageUrls: [], // Implementaremos imagens na próxima etapa
+        imageUrls: finalImageUrls,
+        createdAt: widget.jobToEdit?.createdAt ?? DateTime.now(),
       );
 
-      // 4. Chama o repositório para enviar ao Firestore
-      await context.read<JobRepository>().addJob(
-            userId: userId,
-            job: job,
-          );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Vaga salva com sucesso!')),
-        );
-        Navigator.pop(context); // Fecha a tela e volta para a Home
+      if (widget.jobToEdit != null) {
+        await jobRepo.updateJob(userId: userId, job: jobData);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaga atualizada!')));
+      } else {
+        await jobRepo.addJob(userId: userId, job: jobData);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaga criada!')));
       }
+
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -87,8 +126,14 @@ class _AddJobScreenState extends State<AddJobScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.jobToEdit != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova Vaga')),
+      appBar: AppBar(
+        title: Text(isEditing ? 'Editar Vaga' : 'Nova Vaga'),
+        backgroundColor: const Color(0xFF4F46E5), // AppBar com cor sólida aqui
+        foregroundColor: Colors.white,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -96,37 +141,25 @@ class _AddJobScreenState extends State<AddJobScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- Campo: Empresa ---
               TextFormField(
                 controller: _companyController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome da Empresa',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.business),
-                ),
-                validator: (value) => value == null || value.isEmpty ? 'Campo obrigatório' : null,
+                decoration: const InputDecoration(labelText: 'Empresa', prefixIcon: Icon(Icons.business)),
+                validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
               ),
               const SizedBox(height: 16),
-
-              // --- Campo: Cargo ---
               TextFormField(
                 controller: _roleController,
-                decoration: const InputDecoration(
-                  labelText: 'Cargo / Vaga',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.work),
-                ),
-                validator: (value) => value == null || value.isEmpty ? 'Campo obrigatório' : null,
+                decoration: const InputDecoration(labelText: 'Cargo', prefixIcon: Icon(Icons.work)),
+                validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
               ),
               const SizedBox(height: 16),
-
-              // --- Linha: Modelo e Status ---
               Row(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _workModel,
-                      decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()),
+                      // CORREÇÃO: Usando initialValue em vez de value
+                      initialValue: _workModel,
+                      decoration: const InputDecoration(labelText: 'Modelo'),
                       items: const [
                         DropdownMenuItem(value: 'Remote', child: Text('Remoto')),
                         DropdownMenuItem(value: 'Hybrid', child: Text('Híbrido')),
@@ -138,8 +171,9 @@ class _AddJobScreenState extends State<AddJobScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _status,
-                      decoration: const InputDecoration(labelText: 'Status Inicial', border: OutlineInputBorder()),
+                      // CORREÇÃO: Usando initialValue em vez de value
+                      initialValue: _status,
+                      decoration: const InputDecoration(labelText: 'Status'),
                       items: const [
                         DropdownMenuItem(value: 'to_apply', child: Text('A Candidatar')),
                         DropdownMenuItem(value: 'applied', child: Text('Já Candidatei')),
@@ -150,63 +184,101 @@ class _AddJobScreenState extends State<AddJobScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // --- Campo: Salário ---
               TextFormField(
                 controller: _salaryController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Pretensão Salarial (Opcional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.attach_money),
-                ),
+                decoration: const InputDecoration(labelText: 'Salário', prefixIcon: Icon(Icons.attach_money)),
               ),
               const SizedBox(height: 16),
-
-              // --- Campo: Link ---
               TextFormField(
                 controller: _linkController,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Link da Vaga',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.link),
-                ),
-                validator: (value) => value == null || value.isEmpty ? 'Cole o link da vaga' : null,
+                decoration: const InputDecoration(labelText: 'Link', prefixIcon: Icon(Icons.link)),
               ),
               const SizedBox(height: 16),
-
-              // --- Campo: Descrição (Grande) ---
               TextFormField(
                 controller: _descriptionController,
-                maxLines: 5, // Permite 5 linhas visíveis
-                maxLength: 5000, // Limite generoso que definimos
-                decoration: const InputDecoration(
-                  labelText: 'Descrição da Vaga / Anotações',
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Descrição'),
+              ),
+              
+              const SizedBox(height: 24),
+              const Divider(),
+              
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Imagens / Prints', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  TextButton.icon(
+                    onPressed: _pickImages,
+                    icon: const Icon(Icons.add_photo_alternate),
+                    label: const Text('Adicionar'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              SizedBox(
+                height: 120,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    ..._existingImageUrls.map((url) => _buildImageItem(
+                      imageProvider: NetworkImage(url),
+                      onRemove: () => setState(() => _existingImageUrls.remove(url)),
+                      isNetwork: true,
+                    )),
+                    ..._newImages.map((file) => _buildImageItem(
+                      imageProvider: FileImage(file),
+                      onRemove: () => setState(() => _newImages.remove(file)),
+                      isNetwork: false,
+                    )),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
 
-              // --- Botão Salvar ---
+              const SizedBox(height: 24),
               SizedBox(
                 height: 50,
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : ElevatedButton(
                         onPressed: _saveJob,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('SALVAR VAGA', style: TextStyle(fontSize: 16)),
+                        child: Text(isEditing ? 'SALVAR ALTERAÇÕES' : 'CRIAR VAGA'),
                       ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImageItem({required ImageProvider imageProvider, required VoidCallback onRemove, required bool isNetwork}) {
+    return Stack(
+      children: [
+        Container(
+          width: 100,
+          margin: const EdgeInsets.only(right: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+            image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          right: 8,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: const CircleAvatar(
+              radius: 12,
+              backgroundColor: Colors.red,
+              child: Icon(Icons.close, size: 16, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
