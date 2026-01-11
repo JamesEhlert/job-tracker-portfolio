@@ -1,57 +1,64 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart'; // Para usar debugPrint
 
-/// Repositório responsável por gerenciar a autenticação do usuário.
 class AuthRepository {
   final FirebaseAuth _firebaseAuth;
   final GoogleSignIn _googleSignIn;
 
-  // Construtor: Permite injeção de dependência (útil para testes)
+  // Construtor
   AuthRepository({FirebaseAuth? firebaseAuth, GoogleSignIn? googleSignIn})
-      : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn();
+    : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
+      _googleSignIn = googleSignIn ?? GoogleSignIn();
 
-  /// Retorna o usuário atual se estiver logado, ou null se não estiver.
+  // Retorna o usuário atual ou null
   User? get currentUser => _firebaseAuth.currentUser;
 
-  /// Fluxo de dados (Stream) que avisa quando o usuário loga ou desloga.
-  /// A interface vai "escutar" isso para mudar de tela automaticamente.
+  // Ouve mudanças na autenticação (login/logout)
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 
-  /// Realiza o login usando a conta do Google.
+  // Função de Login
   Future<User?> signInWithGoogle() async {
     try {
-      // 1. Abre a janela nativa do Google no Android
+      // 1. Tenta iniciar o fluxo de login interativo
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      
+
       if (googleUser == null) {
-        return null; // Usuário cancelou o login
+        debugPrint('Login cancelado pelo usuário.');
+        return null;
       }
 
-      // 2. Obtém os tokens de segurança da conta escolhida
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      // 2. Obtém os detalhes de autenticação da solicitação
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
-      // 3. Cria uma credencial para o Firebase usando esses tokens
+      // 3. Cria uma nova credencial para o Firebase
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 4. Faz o login final no Firebase Auth
-      final UserCredential userCredential = 
-          await _firebaseAuth.signInWithCredential(credential);
-      
+      // 4. Faz o login no Firebase com as credenciais
+      final UserCredential userCredential = await _firebaseAuth
+          .signInWithCredential(credential);
+
+      debugPrint(
+        'Usuário logado com sucesso: ${userCredential.user?.displayName}',
+      );
       return userCredential.user;
     } catch (e) {
-      // Em um app real, reportaríamos esse erro para um sistema de logs
-      print('Erro no login com Google: $e');
-      rethrow; // Repassa o erro para a tela tratar (ex: mostrar aviso)
+      debugPrint('Erro no AuthRepository: $e');
+      return null;
     }
   }
 
-  /// Desloga o usuário do aplicativo.
+  // Função de Logout
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _firebaseAuth.signOut();
+    try {
+      await _googleSignIn.signOut();
+      await _firebaseAuth.signOut();
+    } catch (e) {
+      debugPrint('Erro ao deslogar: $e');
+    }
   }
 }

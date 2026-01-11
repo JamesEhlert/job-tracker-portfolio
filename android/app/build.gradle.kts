@@ -42,7 +42,6 @@ flutter {
     source = "../.."
 }
 
-// CORREÇÃO: Nova sintaxe "Compiler Options DSL" exigida pelo erro
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

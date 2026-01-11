@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'repositories/auth_repository.dart';
+import 'repositories/job_repository.dart';
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
 
-// Função principal que inicia o aplicativo
 void main() async {
-  // Garante que a ligação com o sistema nativo (Android) esteja pronta antes de tudo
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Inicializa a conexão com o Google Firebase
   await Firebase.initializeApp();
 
-  // Roda o aplicativo visual
   runApp(const JobTrackerApp());
 }
 
@@ -18,20 +19,58 @@ class JobTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Job Tracker',
-      debugShowCheckedModeBanner: false, // Remove a faixa "Debug" do canto
-      theme: ThemeData(
-        // Configuração de Cores Profissionais (Material 3)
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterial3: true,
-      ),
-      // Por enquanto, mostraremos apenas uma tela em branco (Scaffold)
-      home: const Scaffold(
-        body: Center(
-          child: Text('Job Tracker Initialized'),
+    // MultiProvider permite injetar vários repositórios de uma vez
+    return MultiProvider(
+      providers: [
+        // Disponibiliza o AuthRepository para todo o app
+        Provider<AuthRepository>(
+          create: (_) => AuthRepository(),
         ),
+        // Disponibiliza o JobRepository para todo o app
+        Provider<JobRepository>(
+          create: (_) => JobRepository(),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Job Tracker',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+          useMaterial3: true,
+        ),
+        // AuthWrapper decide qual tela mostrar (Login ou Home)
+        home: const AuthWrapper(),
       ),
+    );
+  }
+}
+
+/// Widget que monitora o estado de autenticação em tempo real
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authRepository = Provider.of<AuthRepository>(context);
+
+    return StreamBuilder<User?>(
+      stream: authRepository.authStateChanges,
+      builder: (context, snapshot) {
+        // Se estiver carregando (ex: verificando se tem token salvo)
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        // Se tem usuário (snapshot.data não é nulo), vai para a Home
+        if (snapshot.hasData) {
+          return const HomeScreen();
+        }
+
+        // Se não tem usuário, vai para o Login
+        return const LoginScreen();
+      },
     );
   }
 }
