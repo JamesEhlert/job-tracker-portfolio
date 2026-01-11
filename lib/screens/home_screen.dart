@@ -5,10 +5,24 @@ import '../repositories/job_repository.dart';
 import '../models/job_application.dart';
 import '../widgets/job_card.dart';
 import 'add_job_screen.dart';
-// Removido import não utilizado
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // Controlador para o campo de texto
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = ''; // O texto que estamos buscando
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,12 +34,12 @@ class HomeScreen extends StatelessWidget {
       child: Scaffold(
         body: Column(
           children: [
-            // --- HEADER OPACIZADO (Slate Gradient) ---
+            // --- HEADER COM DEGRADÊ E BUSCA ---
             Container(
               padding: const EdgeInsets.only(top: 60, left: 24, right: 24, bottom: 24),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF334155), Color(0xFF475569)], 
+                  colors: [Color(0xFF334155), Color(0xFF475569)], // Slate Gradient
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -36,6 +50,7 @@ class HomeScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
+                  // Linha 1: Saudação e Foto
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -75,9 +90,55 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  
+                  const SizedBox(height: 24),
+
+                  // Linha 2: BARRA DE PESQUISA (NOVA)
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase(); // Atualiza a busca
+                      });
+                    },
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: Colors.white,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar empresa ou cargo...',
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                      prefixIcon: Icon(Icons.search, color: Colors.white.withValues(alpha: 0.6)),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.white),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.15), // Fundo translúcido
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white, width: 1),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
                   
-                  // --- TAB BAR MINIMALISTA ---
+                  // Linha 3: TabBar
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
@@ -111,19 +172,19 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
 
-            // --- LISTA ---
+            // --- CORPO DA LISTA (Com Filtro) ---
             Expanded(
               child: TabBarView(
                 children: [
-                  _JobList(status: 'to_apply', userId: user!.uid),
-                  _JobList(status: 'applied', userId: user.uid),
+                  _JobList(status: 'to_apply', userId: user!.uid, searchQuery: _searchQuery),
+                  _JobList(status: 'applied', userId: user.uid, searchQuery: _searchQuery),
                 ],
               ),
             ),
           ],
         ),
         
-        // --- FAB SUAVE ---
+        // FAB (Botão de Adicionar)
         floatingActionButton: SizedBox(
           height: 64,
           width: 64,
@@ -145,11 +206,17 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+// Widget da Lista de Vagas (Agora aceita searchQuery)
 class _JobList extends StatelessWidget {
   final String status;
   final String userId;
+  final String searchQuery; // Parâmetro novo!
 
-  const _JobList({required this.status, required this.userId});
+  const _JobList({
+    required this.status, 
+    required this.userId, 
+    required this.searchQuery,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -162,19 +229,32 @@ class _JobList extends StatelessWidget {
 
         final jobs = snapshot.data ?? [];
 
-        if (jobs.isEmpty) {
+        // --- LÓGICA DE FILTRAGEM ---
+        final filteredJobs = jobs.where((job) {
+          final company = job.companyName.toLowerCase();
+          final role = job.role.toLowerCase();
+          // Verifica se o texto digitado existe no nome da empresa OU no cargo
+          return company.contains(searchQuery) || role.contains(searchQuery);
+        }).toList();
+
+        if (filteredJobs.isEmpty) {
+          // Se não tiver nada (ou se o filtro não encontrou nada)
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  status == 'to_apply' ? Icons.dashboard_outlined : Icons.inventory_2_outlined,
+                  searchQuery.isEmpty 
+                      ? (status == 'to_apply' ? Icons.dashboard_outlined : Icons.inventory_2_outlined)
+                      : Icons.search_off, // Ícone diferente se for busca vazia
                   size: 60,
                   color: Colors.grey.shade300,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  status == 'to_apply' ? 'Planejamento vazio' : 'Histórico vazio',
+                  searchQuery.isEmpty
+                      ? (status == 'to_apply' ? 'Planejamento vazio' : 'Histórico vazio')
+                      : 'Nenhuma vaga encontrada para "$searchQuery"',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
                 ),
               ],
@@ -184,11 +264,12 @@ class _JobList extends StatelessWidget {
 
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-          itemCount: jobs.length,
+          itemCount: filteredJobs.length,
           separatorBuilder: (context, index) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            final job = jobs[index];
-            return JobCard(job: job);
+            final job = filteredJobs[index];
+            // Usamos o UniqueKey para garantir que o Flutter não confunda os cards ao filtrar
+            return JobCard(key: ValueKey(job.id), job: job);
           },
         );
       },
