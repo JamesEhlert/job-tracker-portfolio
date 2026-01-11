@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../repositories/auth_repository.dart';
+import 'add_job_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -40,9 +41,13 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Futuramente aqui abriremos o formulário de nova vaga
+          // Navega para a tela de adicionar vaga
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddJobScreen()),
+          );
         },
         child: const Icon(Icons.add),
       ),
