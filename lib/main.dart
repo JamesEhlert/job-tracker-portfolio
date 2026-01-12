@@ -6,11 +6,17 @@ import 'repositories/auth_repository.dart';
 import 'repositories/job_repository.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'theme/app_theme.dart'; // Importamos nosso novo arquivo
+import 'theme/app_theme.dart';
+import 'firebase_options.dart'; // <--- IMPORTANTE: Importar o arquivo gerado
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  
+  // AQUI ESTÁ A CORREÇÃO MÁGICA PARA WEB
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform, // <--- Isso escolhe a chave certa (Web ou Android) automaticamente
+  );
+  
   runApp(const JobTrackerApp());
 }
 
@@ -27,10 +33,7 @@ class JobTrackerApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Job Tracker',
         debugShowCheckedModeBanner: false,
-        
-        // AQUI ESTÁ A MÁGICA: Uma linha resolve tudo!
         theme: AppTheme.lightTheme,
-        
         home: const AuthWrapper(),
       ),
     );
